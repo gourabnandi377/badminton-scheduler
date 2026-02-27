@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Badminton Random Scheduler (Skill + Rotation + Mixed Types)</title>
+  <style>
+    :root { --bg:#0b1020; --card:#121a33; --text:#e8ecff; --muted:#aab3d6; --accent:#7aa2ff; --danger:#ff6b6b; --warn:#ffd36b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 22px 18px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    header h1 { margin:0 0 6px; font-size: 18px; }
+    header p { margin:0; color: var(--muted); font-size: 13px; }
+    main { max-width: 1200px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; grid-template-columns: 420px 1fr; }
+    @media (max-width: 980px){ main { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 14px; }
+    .card h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }
+    label { display:block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+    textarea, input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.15); color: var(--text); outline: none; }
+    textarea { min-height: 190px; resize: vertical; }
+    .row { display:flex; gap: 10px; }
+    .row > div { flex: 1; }
+    .btns { display:flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    button { cursor:pointer; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: var(--text);
+      padding: 10px 12px; border-radius: 10px; font-weight: 700; font-size: 13px; }
+    button.primary { background: var(--accent); border-color: transparent; color: #07102a; }
+    button.danger { background: rgba(255,107,107,.14); border-color: rgba(255,107,107,.35); color: var(--text); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.35; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); color: var(--muted); font-size: 11px; margin-left: 6px; }
+    .small { font-size: 12px; color: var(--muted); }
+    .warn { color: var(--warn); }
+    .dangerText { color: var(--danger); }
+
+    .schedule { display:grid; gap: 12px; }
+    .round { border: 1px solid rgba(255,255,255,.10); border-radius: 12px; overflow:hidden; }
+    .round header { padding: 10px 12px; background: rgba(255,255,255,.05); border: 0; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    .round header h3 { margin:0; font-size: 13px; }
+    .round header .meta { font-size:12px; color: var(--muted); }
+
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-top: 1px solid rgba(255,255,255,.08); font-size: 13px; vertical-align: top; }
+    th { color: var(--muted); font-weight: 800; text-align: left; font-size: 12px; }
+
+    .twoCol { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 980px){ .twoCol { grid-template-columns: 1fr; } }
+
+    .playerTable { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .playerTable th, .playerTable td { border-top: 1px solid rgba(255,255,255,.08); padding: 8px 10px; font-size: 12px; }
+    .right { text-align:right; }
+
+    /* Print/PDF */
+    @media print {
+      :root { --bg:#ffffff; --card:#ffffff; --text:#000000; --muted:#333333; --accent:#000000; --danger:#000000; --warn:#000000; }
+      body { background: #fff; color:#000; }
+      main { grid-template-columns: 1fr; max-width: none; padding: 0; }
+      header, .noPrint { display:none !important; }
+      .card { border: none; border-radius: 0; padding: 0; }
+      .round { break-inside: avoid; }
+      th, td { border-color: #ddd; }
+    }
+  </style>
+</head>
+<body>
+  <header class="noPrint">
+    <h1>Badminton Random Scheduler</h1>
+    <p>Skill-balanced teams • rotation fairness • mixed singles/doubles • print/PDF export.</p>
+  </header>
+
+  <main>
+    <section class="card noPrint">
+      <h2>Session Setup</h2>
+
+      <label>Players (one per line): <span class="pill">Name, Rating, Gender</span></label>
+      <textarea id="players" placeholder="Examples:
+Auden, 3.5, M
+Sophie, 2.8, F
+Alec, 3.2, M
+Julianna, 2.6, F
+Donovan, 3.0, M
+Vicki, 2.9, F
+
+Rating: any numeric scale (e.g., 1–5)
+Gender: M/F/Other (used for mixed doubles)"></textarea>
+      <div class="hint">
+        If rating or gender is missing, defaults are used: <b>rating=3.0</b>, <b>gender=Other</b>.
+        Names are de-duplicated.
+      </div>
+
+      <div class="twoCol">
+        <div>
+          <label>Courts</label>
+          <input id="courts" type="number" min="1" value="1" />
+          <div class="hint small">With 6 players, 2 courts usually means extra rests. The scheduler will keep play time fair.</div>
+        </div>
+        <div>
+          <label>Rounds</label>
+          <input id="rounds" type="number" min="1" value="8" />
+        </div>
+      </div>
+
+      <div class="twoCol">
+        <div>
+          <label>Session Mode</label>
+          <select id="sessionMode">
+            <option value="doubles_only">Doubles only (default)</option>
+            <option value="mixed_session">Mixed session (mostly doubles + some singles)</option>
+          </select>
+        </div>
+        <div>
+          <label>Singles frequency (only for Mixed session)</label>
+          <input id="singlesPct" type="number" min="0" max="100" value="25" />
+          <div class="hint small">25 = ~1 singles round per 4 rounds (if feasible).</div>
+        </div>
+      </div>
+
+      <div class="twoCol">
+        <div>
+          <label>Mixed doubles preference</label>
+          <select id="mixedDoubles">
+            <option value="prefer">Prefer mixed doubles (penalize non-mixed)</option>
+            <option value="require">Require mixed doubles when possible</option>
+            <option value="off">Off (ignore gender)</option>
+          </select>
+        </div>
+        <div>
+          <label>Quality (attempts per round)</label>
+          <input id="attempts" type="number" min="100" value="600" />
+          <div class="hint small">Higher = better balancing & fewer repeats, but slower.</div>
+        </div>
+      </div>
+
+      <label><input id="avoidRepeatPartners" type="checkbox" checked /> Avoid repeat partners (doubles)</label>
+      <label><input id="avoidRepeatOpponents" type="checkbox" checked /> Avoid repeat opponents</label>
+      <label><input id="rotationFairness" type="checkbox" checked /> Rotation fairness (min consecutive rests, equalize play count)</label>
+
+      <div class="btns">
+        <button class="primary" id="generate">Generate Schedule</button>
+        <button id="seedExample">Load 6-player example</button>
+        <button id="shuffleNames">Shuffle lines</button>
+        <button class="danger" id="clear">Clear</button>
+        <button id="printPdf" disabled>Print / Save as PDF</button>
+        <button id="exportCsv" disabled>Export CSV</button>
+      </div>
+
+      <div id="status" class="hint small"></div>
+
+      <div class="hint">
+        <span class="pill">Scoring</span>
+        The generator tries many random candidates each round and chooses the lowest penalty based on:
+        <b>skill balance</b>, <b>mixed-doubles constraint</b>, <b>repeat partners/opponents</b>, and <b>rotation fairness</b>.
+      </div>
+
+      <div id="rosterPreview" class="hint"></div>
+    </section>
+
+    <section class="card">
+      <h2 class="noPrint">Schedule</h2>
+      <div id="schedule" class="schedule"></div>
+    </section>
+  </main>
+
+<script>
+/* ---------- Parsing / Utilities ---------- */
+function normalizeGender(g){
+  const s = String(g||"").trim().toLowerCase();
+  if (["m","male","man"].includes(s)) return "M";
+  if (["f","female","woman"].includes(s)) return "F";
+  return "O"; // Other/unspecified
+}
+function safeNumber(x, fallback){
+  const n = Number(String(x||"").trim());
+  return Number.isFinite(n) ? n : fallback;
+}
+function parsePlayers(text){
+  const lines = text.split("\n").map(s => s.trim()).filter(Boolean);
+  const seen = new Set();
+  const players = [];
+  for (const line of lines){
+    const parts = line.split(",").map(s => s.trim());
+    const name = parts[0];
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const rating = safeNumber(parts[1], 3.0);
+    const gender = normalizeGender(parts[2] || "O");
+    players.push({ name, rating, gender });
+  }
+  return players;
+}
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i=a.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+function pairKey(a,b){ return [a,b].sort().join("||"); }
+function teamKey(team){ return team.slice().sort().join("&&"); }
+function matchKey(teamA, teamB){
+  const A = teamKey(teamA), B = teamKey(teamB);
+  return [A,B].sort().join(" vs ");
+}
+function sumRating(names, roster){
+  return names.reduce((acc, n) => acc + (roster.get(n)?.rating ?? 0), 0);
+}
+function isMixedTeam(team, roster){
+  const gs = team.map(n => roster.get(n)?.gender || "O");
+  const hasM = gs.includes("M");
+  const hasF = gs.includes("F");
+  return hasM && hasF;
+}
+function countMF(rosterArr){
+  let m=0,f=0,o=0;
+  for (const p of rosterArr){
+    if (p.gender==="M") m++;
+    else if (p.gender==="F") f++;
+    else o++;
+  }
+  return {m,f,o};
+}
+
+/* ---------- Counters for repeats & rotation ---------- */
+function makeCounters(players){
+  const names = players.map(p => p.name);
+  return {
+    partnerCount: new Map(), // pairKey -> count
+    oppCount: new Map(),     // pairKey -> count (opponents)
+    matchCount: new Map(),   // matchKey -> count (team vs team)
+    playCount: new Map(names.map(n => [n,0])),
+    restCount: new Map(names.map(n => [n,0])),
+    restStreak: new Map(names.map(n => [n,0])),
+  };
+}
+function inc(map, key, delta=1){ map.set(key, (map.get(key)||0) + delta); }
+
+/* ---------- Round typing ---------- */
+function chooseRoundType(roundIndex, sessionMode, singlesPct){
+  if (sessionMode === "doubles_only") return "doubles";
+  // mixed_session: probabilistic mix; keep stable by roundIndex using pseudo randomness
+  const p = Math.max(0, Math.min(100, Number(singlesPct||0))) / 100.0;
+  // deterministic-ish: hash on roundIndex
+  const x = Math.sin((roundIndex+1) * 999) * 10000;
+  const u = x - Math.floor(x);
+  return (u < p) ? "singles" : "doubles";
+}
+
+/* ---------- Candidate generators (random) ---------- */
+function pickActivePlayers(allNames, needed, counters, rotationFairness){
+  // If rotation fairness, bias selection toward those who have played less / rested last round.
+  const names = allNames.slice();
+  if (!rotationFairness){
+    return shuffle(names).slice(0, Math.min(needed, names.length));
+  }
+
+  // Weighted sampling without replacement:
+  // weight ~ (maxPlay - playCount + 1) + (restStreak>0 ? 1 : 0)
+  const playCounts = names.map(n => counters.playCount.get(n)||0);
+  const maxPlay = Math.max(...playCounts);
+  const pool = names.map(n => {
+    const pc = counters.playCount.get(n)||0;
+    const rs = counters.restStreak.get(n)||0;
+    const w = (maxPlay - pc + 1) + (rs>0 ? 1.0 : 0);
+    return { n, w: Math.max(0.1, w) };
+  });
+
+  const chosen = [];
+  const available = pool.slice();
+  while (chosen.length < needed && available.length){
+    const total = available.reduce((a,x)=>a+x.w,0);
+    let r = Math.random()*total;
+    let idx = 0;
+    for (; idx<available.length; idx++){
+      r -= available[idx].w;
+      if (r <= 0) break;
+    }
+    const sel = available.splice(Math.min(idx, available.length-1), 1)[0];
+    chosen.push(sel.n);
+  }
+  return chosen;
+}
+
+function genSinglesRound(names, courts, counters, rotationFairness){
+  const maxMatches = Math.max(1, courts);
+  const needed = maxMatches * 2;
+
+  const active = pickActivePlayers(names, Math.min(needed, names.length), counters, rotationFairness);
+  const shuffled = shuffle(active);
+
+  const matches = [];
+  for (let i=0; i+1<shuffled.length && matches.length<maxMatches; i+=2){
+    matches.push([shuffled[i], shuffled[i+1]]);
+  }
+  const scheduled = new Set(matches.flat());
+  const rests = names.filter(n => !scheduled.has(n));
+  return { type:"singles", matches, rests };
+}
+
+function genDoublesRound(names, courts, counters, rotationFairness){
+  const maxMatches = Math.max(1, courts);
+  const needed = maxMatches * 4;
+
+  // With 6 players and 2 courts, only 1 doubles match is feasible (needs 8 for 2 courts).
+  // So we cap feasible matches by floor(N/4).
+  const feasibleMatches = Math.min(maxMatches, Math.floor(names.length / 4));
+  const feasibleNeeded = feasibleMatches * 4;
+
+  const active = pickActivePlayers(names, feasibleNeeded, counters, rotationFairness);
+  const used = shuffle(active);
+
+  const teams = [];
+  for (let i=0; i+1<used.length; i+=2){
+    teams.push([used[i], used[i+1]]);
+  }
+
+  const matches = [];
+  for (let i=0; i+1<teams.length && matches.length<feasibleMatches; i+=2){
+    matches.push({ court: matches.length+1, teamA: teams[i], teamB: teams[i+1] });
+  }
+
+  const scheduled = new Set(matches.flatMap(m => [...m.teamA, ...m.teamB]));
+  const rests = names.filter(n => !scheduled.has(n));
+  return { type:"doubles", matches, rests };
+}
+
+/* ---------- Scoring (penalties) ---------- */
+function scoreSingles(round, roster, counters, opts){
+  // opts: avoidRepeatOpponents, rotationFairness, etc.
+  let penalty = 0;
+
+  // skill balance
+  for (const [a,b] of round.matches){
+    const ra = roster.get(a).rating, rb = roster.get(b).rating;
+    penalty += Math.abs(ra - rb) * 6; // singles should be close-ish
+    if (opts.avoidRepeatOpponents){
+      const k = pairKey(a,b);
+      penalty += (counters.oppCount.get(k)||0) * 10;
+    }
+  }
+
+  // rotation fairness
+  if (opts.rotationFairness){
+    // consecutive rest is strongly penalized
+    for (const p of round.rests){
+      const rs = counters.restStreak.get(p)||0;
+      penalty += rs * 10;
+    }
+    // equalize total play count
+    const plays = [...counters.playCount.values()];
+    const maxPlay = Math.max(...plays), minPlay = Math.min(...plays);
+    penalty += (maxPlay - minPlay) * 2;
+  }
+
+  penalty += Math.random()*0.01;
+  return penalty;
+}
+
+function mixedFeasible(rosterArr){
+  // "possible" if we have at least 2M and 2F among active players for a single doubles match,
+  // OR if larger counts allow it in general. We'll use this for "require" behavior.
+  const {m,f} = countMF(rosterArr);
+  return (m >= 2 && f >= 2);
+}
+
+function scoreDoubles(round, roster, counters, opts){
+  // opts: mixedDoubles, avoidRepeatPartners, avoidRepeatOpponents, rotationFairness
+  let penalty = 0;
+
+  for (const m of round.matches){
+    const A = m.teamA, B = m.teamB;
+
+    // skill balance by team sums
+    const sumA = sumRating(A, roster);
+    const sumB = sumRating(B, roster);
+    penalty += Math.abs(sumA - sumB) * 7; // want balanced teams
+
+    // mixed doubles constraint
+    const mode = opts.mixedDoubles; // "prefer" | "require" | "off"
+    if (mode !== "off"){
+      const aMixed = isMixedTeam(A, roster);
+      const bMixed = isMixedTeam(B, roster);
+
+      // feasibility check based on the 4 players in this match
+      const rosterArr = [...A, ...B].map(n => roster.get(n));
+      const feasible = mixedFeasible(rosterArr);
+
+      if (mode === "require" && feasible){
+        // if feasible, non-mixed is effectively invalid
+        if (!aMixed || !bMixed) penalty += 1e6;
+      } else if (mode === "prefer"){
+        if (!aMixed) penalty += 40;
+        if (!bMixed) penalty += 40;
+      }
+    }
+
+    // repeats
+    if (opts.avoidRepeatPartners){
+      penalty += (counters.partnerCount.get(pairKey(A[0],A[1]))||0) * 18;
+      penalty += (counters.partnerCount.get(pairKey(B[0],B[1]))||0) * 18;
+    }
+    if (opts.avoidRepeatOpponents){
+      for (const [x,y] of [[A[0],B[0]],[A[0],B[1]],[A[1],B[0]],[A[1],B[1]]]){
+        penalty += (counters.oppCount.get(pairKey(x,y))||0) * 6;
+      }
+      penalty += (counters.matchCount.get(matchKey(A,B))||0) * 12;
+    }
+  }
+
+  // rotation fairness
+  if (opts.rotationFairness){
+    for (const p of round.rests){
+      const rs = counters.restStreak.get(p)||0;
+      penalty += rs * 10;
+    }
+    const plays = [...counters.playCount.values()];
+    const maxPlay = Math.max(...plays), minPlay = Math.min(...plays);
+    penalty += (maxPlay - minPlay) * 3;
+  }
+
+  penalty += Math.random()*0.01;
+  return penalty;
+}
+
+/* ---------- Apply round effects ---------- */
+function applyRound(round, counters, opts){
+  const played = new Set();
+  if (round.type === "singles"){
+    for (const [a,b] of round.matches){
+      played.add(a); played.add(b);
+      if (opts.avoidRepeatOpponents) inc(counters.oppCount, pairKey(a,b), 1);
+    }
+  } else {
+    for (const m of round.matches){
+      const A = m.teamA, B = m.teamB;
+      for (const x of [...A,...B]) played.add(x);
+
+      if (opts.avoidRepeatPartners){
+        inc(counters.partnerCount, pairKey(A[0],A[1]), 1);
+        inc(counters.partnerCount, pairKey(B[0],B[1]), 1);
+      }
+      if (opts.avoidRepeatOpponents){
+        for (const [x,y] of [[A[0],B[0]],[A[0],B[1]],[A[1],B[0]],[A[1],B[1]]]){
+          inc(counters.oppCount, pairKey(x,y), 1);
+        }
+        inc(counters.matchCount, matchKey(A,B), 1);
+      }
+    }
+  }
+
+  // update play/rest counts and rest streaks
+  for (const [name] of counters.playCount){
+    if (played.has(name)){
+      counters.playCount.set(name, (counters.playCount.get(name)||0)+1);
+      counters.restStreak.set(name, 0);
+    } else {
+      counters.restCount.set(name, (counters.restCount.get(name)||0)+1);
+      counters.restStreak.set(name, (counters.restStreak.get(name)||0)+1);
+    }
+  }
+}
+
+/* ---------- Scheduler ---------- */
+function buildSchedule(players, rounds, courts, sessionMode, singlesPct, opts){
+  const names = players.map(p => p.name);
+  const roster = new Map(players.map(p => [p.name, p]));
+  const counters = makeCounters(players);
+
+  const schedule = [];
+  for (let r=1; r<=rounds; r++){
+    const type = chooseRoundType(r-1, sessionMode, singlesPct);
+
+    let best = null, bestScore = Infinity;
+
+    for (let k=0; k<opts.attempts; k++){
+      const cand = (type === "singles")
+        ? genSinglesRound(names, courts, counters, opts.rotationFairness)
+        : genDoublesRound(names, courts, counters, opts.rotationFairness);
+
+      // If generator yields no match (e.g. too few players), keep it but penalize less
+      const s = (cand.type === "singles")
+        ? scoreSingles(cand, roster, counters, opts)
+        : scoreDoubles(cand, roster, counters, opts);
+
+      if (s < bestScore){
+        bestScore = s;
+        best = cand;
+      }
+    }
+
+    applyRound(best, counters, opts);
+    schedule.push({ round: r, type: best.type, data: best });
+  }
+
+  return { schedule, counters, roster };
+}
+
+/* ---------- Rendering ---------- */
+function el(tag, attrs={}, children=[]){
+  const node = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v]) => {
+    if (k === "class") node.className = v;
+    else if (k === "html") node.innerHTML = v;
+    else node.setAttribute(k, v);
+  });
+  for (const c of children){
+    node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+function fmtTeam(team, roster){
+  const a = roster.get(team[0]), b = roster.get(team[1]);
+  const ra = a.rating.toFixed(1), rb = b.rating.toFixed(1);
+  const mix = (a.gender==="M" && b.gender==="F") || (a.gender==="F" && b.gender==="M");
+  const mixTag = mix ? " (mixed)" : "";
+  return `${team[0]} (${ra}) + ${team[1]} (${rb})${mixTag}`;
+}
+function renderRosterPreview(players, counters){
+  const rows = players
+    .slice()
+    .sort((x,y)=>y.rating-x.rating)
+    .map(p => {
+      const pc = counters?.playCount?.get(p.name) ?? 0;
+      const rc = counters?.restCount?.get(p.name) ?? 0;
+      return `<tr>
+        <td>${p.name}</td>
+        <td class="right">${p.rating.toFixed(1)}</td>
+        <td class="right">${p.gender}</td>
+        <td class="right">${pc}</td>
+        <td class="right">${rc}</td>
+      </tr>`;
+    }).join("");
+  return `
+    <table class="playerTable">
+      <thead><tr>
+        <th>Player</th><th class="right">Rating</th><th class="right">G</th><th class="right">Play</th><th class="right">Rest</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+function renderSchedule(container, result){
+  container.innerHTML = "";
+  for (const item of result.schedule){
+    const round = item.round;
+    const data = item.data;
+
+    const title = data.type === "singles" ? "Singles" : "Doubles";
+    const roundCard = el("div", { class: "round" }, [
+      el("header", {}, [
+        el("h3", {}, [`Round ${round}`]),
+        el("div", { class: "meta" }, [title])
+      ])
+    ]);
+
+    const tbl = el("table");
+    const thead = el("thead");
+    const trh = el("tr");
+    if (data.type === "singles"){
+      ["Court","Match (ratings)"].forEach(h => trh.appendChild(el("th", {}, [h])));
+    } else {
+      ["Court","Team A","Team B","Balance"].forEach(h => trh.appendChild(el("th", {}, [h])));
+    }
+    thead.appendChild(trh);
+    tbl.appendChild(thead);
+
+    const tbody = el("tbody");
+
+    if (data.type === "singles"){
+      if (!data.matches.length){
+        const tr = el("tr");
+        tr.appendChild(el("td",{ colspan:"2", class:"small warn" },["No matches this round (not enough players)."]));
+        tbody.appendChild(tr);
+      } else {
+        data.matches.forEach((m, i) => {
+          const ra = result.roster.get(m[0]).rating.toFixed(1);
+          const rb = result.roster.get(m[1]).rating.toFixed(1);
+          const tr = el("tr");
+          tr.appendChild(el("td",{},[`Court ${i+1}`]));
+          tr.appendChild(el("td",{},[`${m[0]} (${ra}) vs ${m[1]} (${rb})`]));
+          tbody.appendChild(tr);
+        });
+      }
+    } else {
+      if (!data.matches.length){
+        const tr = el("tr");
+        tr.appendChild(el("td",{ colspan:"4", class:"small warn" },["No doubles matches this round (need at least 4 players)."]));
+        tbody.appendChild(tr);
+      } else {
+        data.matches.forEach((m) => {
+          const sumA = sumRating(m.teamA, result.roster);
+          const sumB = sumRating(m.teamB, result.roster);
+          const diff = Math.abs(sumA - sumB);
+          const tr = el("tr");
+          tr.appendChild(el("td",{},[`Court ${m.court}`]));
+          tr.appendChild(el("td",{},[fmtTeam(m.teamA, result.roster)]));
+          tr.appendChild(el("td",{},[fmtTeam(m.teamB, result.roster)]));
+          tr.appendChild(el("td",{},[`|${sumA.toFixed(1)} - ${sumB.toFixed(1)}| = ${diff.toFixed(1)}`]));
+          tbody.appendChild(tr);
+        });
+      }
+    }
+
+    tbl.appendChild(tbody);
+    roundCard.appendChild(tbl);
+
+    const rests = data.rests && data.rests.length ? data.rests.join(", ") : "—";
+    const foot = el("div", { class:"hint small", style:"padding:10px 12px;border-top:1px solid rgba(255,255,255,.08)" }, [
+      el("span", { class:"pill" }, ["Rest"]),
+      el("span", {}, [" ", rests])
+    ]);
+    roundCard.appendChild(foot);
+
+    container.appendChild(roundCard);
+  }
+}
+
+function toCsv(result){
+  const rows = [];
+  rows.push(["round","type","court","teamA_or_p1","teamB_or_p2","rests"].join(","));
+  for (const item of result.schedule){
+    const r = item.round;
+    const d = item.data;
+    if (d.type === "singles"){
+      d.matches.forEach((m,i)=>{
+        rows.push([r,"singles",i+1,`"${m[0]}"`,`"${m[1]}"`,""].join(","));
+      });
+    } else {
+      d.matches.forEach((m)=>{
+        rows.push([r,"doubles",m.court,`"${m.teamA[0]} + ${m.teamA[1]}"`,`"${m.teamB[0]} + ${m.teamB[1]}"`,""].join(","));
+      });
+    }
+    if (d.rests && d.rests.length){
+      rows.push([r,d.type,"","","",`"${d.rests.join(" | ")}"`].join(","));
+    }
+  }
+  return rows.join("\n");
+}
+
+/* ---------- Wire-up ---------- */
+const playersEl = document.getElementById("players");
+const courtsEl = document.getElementById("courts");
+const roundsEl = document.getElementById("rounds");
+const attemptsEl = document.getElementById("attempts");
+const sessionModeEl = document.getElementById("sessionMode");
+const singlesPctEl = document.getElementById("singlesPct");
+const mixedDoublesEl = document.getElementById("mixedDoubles");
+
+const avoidRepeatPartnersEl = document.getElementById("avoidRepeatPartners");
+const avoidRepeatOpponentsEl = document.getElementById("avoidRepeatOpponents");
+const rotationFairnessEl = document.getElementById("rotationFairness");
+
+const statusEl = document.getElementById("status");
+const scheduleEl = document.getElementById("schedule");
+const exportBtn = document.getElementById("exportCsv");
+const printBtn = document.getElementById("printPdf");
+const rosterPreviewEl = document.getElementById("rosterPreview");
+
+let lastResult = null;
+
+function updateRosterPreview(){
+  const players = parsePlayers(playersEl.value);
+  if (!players.length){
+    rosterPreviewEl.innerHTML = "";
+    return;
+  }
+  const fakeCounters = makeCounters(players);
+  rosterPreviewEl.innerHTML = `<div class="hint"><span class="pill">Roster preview</span></div>` + renderRosterPreview(players, fakeCounters);
+}
+playersEl.addEventListener("input", updateRosterPreview);
+
+document.getElementById("shuffleNames").addEventListener("click", () => {
+  const lines = playersEl.value.split("\n").filter(x=>x.trim().length);
+  playersEl.value = shuffle(lines).join("\n");
+  updateRosterPreview();
+});
+
+document.getElementById("seedExample").addEventListener("click", () => {
+  playersEl.value = [
+    "Auden, 3.6, M",
+    "Sophie, 2.8, F",
+    "Alec, 3.2, M",
+    "Julianna, 2.6, F",
+    "Donovan, 3.0, M",
+    "Vicki, 2.9, F",
+  ].join("\n");
+  courtsEl.value = "1";
+  roundsEl.value = "8";
+  sessionModeEl.value = "mixed_session";
+  singlesPctEl.value = "25";
+  mixedDoublesEl.value = "prefer";
+  updateRosterPreview();
+});
+
+document.getElementById("clear").addEventListener("click", () => {
+  playersEl.value = "";
+  scheduleEl.innerHTML = "";
+  statusEl.textContent = "";
+  rosterPreviewEl.innerHTML = "";
+  exportBtn.disabled = true;
+  printBtn.disabled = true;
+  lastResult = null;
+});
+
+document.getElementById("generate").addEventListener("click", () => {
+  const players = parsePlayers(playersEl.value);
+  const courts = Math.max(1, parseInt(courtsEl.value || "1", 10));
+  const rounds = Math.max(1, parseInt(roundsEl.value || "1", 10));
+  const attempts = Math.max(100, parseInt(attemptsEl.value || "600", 10));
+  const sessionMode = sessionModeEl.value;
+  const singlesPct = Math.max(0, Math.min(100, parseInt(singlesPctEl.value || "0", 10)));
+
+  const opts = {
+    attempts,
+    mixedDoubles: mixedDoublesEl.value,
+    avoidRepeatPartners: avoidRepeatPartnersEl.checked,
+    avoidRepeatOpponents: avoidRepeatOpponentsEl.checked,
+    rotationFairness: rotationFairnessEl.checked,
+  };
+
+  if (players.length < 2){
+    statusEl.innerHTML = `<span class="dangerText">Add at least 2 players.</span>`;
+    return;
+  }
+
+  // Some helpful status warnings for your typical case (6 players).
+  const {m,f,o} = countMF(players);
+  const md = opts.mixedDoubles;
+  let warn = [];
+  if (players.length === 6 && courts > 1) warn.push("With 6 players and 2 courts, only 1 doubles match can run at a time; rotation will handle rests.");
+  if (md !== "off" && (m < 2 || f < 2)) warn.push("Mixed doubles may be hard to satisfy (need ≥2M and ≥2F among the 4 active players).");
+
+  statusEl.innerHTML = `Players: <b>${players.length}</b> (M:${m} F:${f} O:${o}) · Courts: <b>${courts}</b> · Rounds: <b>${rounds}</b> · Mode: <b>${sessionMode.replace("_"," ")}</b>`
+    + (warn.length ? `<div class="warn" style="margin-top:6px">${warn.map(w=>"• "+w).join("<br>")}</div>` : "");
+
+  const result = buildSchedule(players, rounds, courts, sessionMode, singlesPct, opts);
+  lastResult = { ...result, meta: { players, courts, rounds, sessionMode, singlesPct, opts } };
+
+  scheduleEl.innerHTML = "";
+  renderSchedule(scheduleEl, result);
+
+  // Show final play/rest counts to verify fairness
+  const rosterRows = players.map(p => {
+    const pc = result.counters.playCount.get(p.name)||0;
+    const rc = result.counters.restCount.get(p.name)||0;
+    return { ...p, pc, rc };
+  });
+
+  rosterPreviewEl.innerHTML =
+    `<div class="hint"><span class="pill">Roster (final play/rest counts)</span></div>` +
+    renderRosterPreview(rosterRows, result.counters);
+
+  exportBtn.disabled = false;
+  printBtn.disabled = false;
+});
+
+document.getElementById("exportCsv").addEventListener("click", () => {
+  if (!lastResult) return;
+  const csv = toCsv(lastResult);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "badminton_schedule.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("printPdf").addEventListener("click", () => {
+  // Use browser Print dialog; user can "Save as PDF"
+  window.print();
+});
+
+// initial preview
+updateRosterPreview();
+</script>
+</body>
+</html>
